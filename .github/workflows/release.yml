@@ -46,6 +46,7 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           EXISTING=$(security list-keychains -d user | sed 's/[[:space:]]*"\(.*\)"/\1/')
           security list-keychains -d user -s build.keychain $EXISTING
+          security default-keychain -s build.keychain
 
           security import "$RUNNER_TEMP/cert.p12" -k build.keychain -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain

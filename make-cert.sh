@@ -20,6 +20,7 @@ if [ "$CI" = "true" ]; then
     security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
     EXISTING=$(security list-keychains -d user | sed 's/[[:space:]]*"\(.*\)"/\1/')
     security list-keychains -d user -s "$KEYCHAIN" $EXISTING
+    security default-keychain -s "$KEYCHAIN"
 else
     KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
 fi
@@ -49,7 +50,7 @@ security import "$TMPDIR_CERT/cert.p12" \
     -T /usr/bin/security
 
 if [ "$CI" = "true" ]; then
-    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null 2>&1
 fi
 
 echo "Сертификат '$CERT_NAME' создан и импортирован."
