@@ -49,7 +49,7 @@ security import "$TMPDIR_CERT/cert.p12" \
     -T /usr/bin/security
 
 if [ "$CI" = "true" ]; then
-    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
 fi
 
 echo "Сертификат '$CERT_NAME' создан и импортирован."
