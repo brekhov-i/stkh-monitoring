@@ -32,7 +32,7 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
 EOF
 
 CERT_NAME="StkhMonitor Local Signing"
-if ! security find-certificate -c "$CERT_NAME" "$HOME/Library/Keychains/login.keychain-db" >/dev/null 2>&1; then
+if ! security find-certificate -c "$CERT_NAME" >/dev/null 2>&1; then
     "$(dirname "$0")/make-cert.sh"
 fi
 codesign --force --deep --sign "$CERT_NAME" "$APP"

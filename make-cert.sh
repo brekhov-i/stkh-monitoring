@@ -3,7 +3,7 @@ set -e
 
 CERT_NAME="StkhMonitor Local Signing"
 
-if security find-certificate -c "$CERT_NAME" "$HOME/Library/Keychains/login.keychain-db" >/dev/null 2>&1; then
+if security find-certificate -c "$CERT_NAME" >/dev/null 2>&1; then
     echo "Сертификат '$CERT_NAME' уже есть в связке ключей."
     exit 0
 fi
