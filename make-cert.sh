@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -ex
 
 CERT_NAME="StkhMonitor Local Signing"
 
