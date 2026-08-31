@@ -1,5 +1,5 @@
 #!/bin/bash
-set -ex
+set -e
 cd "$(dirname "$0")"
 
 APP="build/StkhMonitor.app"
@@ -35,17 +35,6 @@ CERT_NAME="StkhMonitor Local Signing"
 if ! security find-certificate -c "$CERT_NAME" >/dev/null 2>&1; then
     "$(dirname "$0")/make-cert.sh"
 fi
-set +e
-codesign --force --deep --sign "$CERT_NAME" "$APP" 2>&1
-CODESIGN_EXIT=$?
-set -e
-echo "=== codesign exit code: $CODESIGN_EXIT ==="
-if [ "$CODESIGN_EXIT" -ne 0 ]; then
-    echo "=== security find-identity -v ==="
-    security find-identity -v 2>&1 || true
-    echo "=== security find-certificate -a -c \"$CERT_NAME\" ==="
-    security find-certificate -a -c "$CERT_NAME" 2>&1 || true
-    exit 1
-fi
+codesign --force --deep --sign "$CERT_NAME" "$APP"
 
 echo "Собрано: $APP"
