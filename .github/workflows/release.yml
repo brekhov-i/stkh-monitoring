@@ -14,12 +14,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `secrets` can't be referenced directly in `if:` — GitHub disallows it.
+      # Stash whether it's set in a step output instead, and branch on that.
+      - name: Check for signing certificate secret
+        id: cert_check
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+        run: |
+          if [ -n "$MACOS_CERT_P12" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # If the repo secrets aren't set up, this step is skipped and build.sh
       # falls back to generating its own throwaway certificate — the build
       # still succeeds, it just won't share a stable identity with local
       # builds (see setup-ci-cert.sh).
       - name: Import stable signing certificate
-        if: ${{ secrets.MACOS_CERT_P12 != '' }}
+        if: steps.cert_check.outputs.present == 'true'
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
