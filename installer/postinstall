@@ -1,0 +1,99 @@
+#!/bin/bash
+# Выполняется установщиком от root после того, как бандл лёг в /Applications.
+#
+# Делает ровно то, что пользователь иначе делал бы руками и с паролем:
+#   1) прописывает приложение в автозапуск ВСЕХ пользователей;
+#   2) поднимает привилегированный helper, чтобы запуск и остановка
+#      stkh-client не спрашивали пароль ни у кого;
+#   3) запускает приложение во всех уже открытых сеансах — без перезахода.
+#
+# Ошибки не должны валить установку: приложение работоспособно и без helper'а
+# (через запрос пароля), поэтому выходим с нулём в любом случае.
+
+APP="/Applications/StkhMonitor.app"
+LABEL="com.ilya.stkhmonitor"
+HELPER_LABEL="com.ilya.stkhmonitor.helper"
+AGENT="/Library/LaunchAgents/$LABEL.plist"
+HELPER_DAEMON="/Library/LaunchDaemons/$HELPER_LABEL.plist"
+
+# uid всех открытых графических сеансов: при быстром переключении пользователей
+# их несколько, у каждого свой домен launchd gui/<uid>. Опознаются по
+# loginwindow — по одному процессу на сеанс.
+session_uids() {
+    ps -axo uid=,comm= | awk '$2 ~ /\/loginwindow$/ && $1 >= 500 { print $1 }' | sort -u
+}
+
+# Старые экземпляры гасим: бинарник уже заменён, в памяти висит прежний.
+for uid in $(session_uids); do
+    launchctl bootout "gui/$uid/$LABEL" >/dev/null 2>&1
+done
+pkill -f "^$APP/Contents/MacOS/StkhMonitor$" >/dev/null 2>&1
+
+# Пер-юзерные плисты от прежних установок: рядом с системным они дают двойной
+# запуск при входе.
+rm -f /Users/*/Library/LaunchAgents/"$LABEL".plist >/dev/null 2>&1
+
+# Системный LaunchAgent: launchd грузит его в каждый графический сеанс, поэтому
+# иконка появляется у любого вошедшего пользователя. Плист в домашней папке так
+# не умеет — соседям она недоступна.
+cat > "$AGENT" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$LABEL</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$APP/Contents/MacOS/StkhMonitor</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+</dict>
+</plist>
+PLIST
+chown root:wheel "$AGENT"
+chmod 644 "$AGENT"
+
+# Helper ставим как обычный системный демон, а не через SMAppService. Пакет и
+# так выполняется от root, а SMAppService потребовал бы от пользователя вручную
+# включить тумблер в «Элементах входа» — для установки на несколько машин это
+# лишний шаг, о котором никто не помнит.
+launchctl bootout "system/$HELPER_LABEL" >/dev/null 2>&1
+cat > "$HELPER_DAEMON" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$HELPER_LABEL</string>
+    <key>Program</key>
+    <string>$APP/Contents/MacOS/StkhHelper</string>
+    <key>MachServices</key>
+    <dict>
+        <key>$HELPER_LABEL</key>
+        <true/>
+    </dict>
+    <key>AssociatedBundleIdentifiers</key>
+    <array>
+        <string>$LABEL</string>
+    </array>
+</dict>
+</plist>
+PLIST
+chown root:wheel "$HELPER_DAEMON"
+chmod 644 "$HELPER_DAEMON"
+launchctl bootstrap system "$HELPER_DAEMON" >/dev/null 2>&1
+
+# Иконка должна появиться сразу, а не после перезахода.
+for uid in $(session_uids); do
+    launchctl bootstrap "gui/$uid" "$AGENT" >/dev/null 2>&1
+done
+
+exit 0
