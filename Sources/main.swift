@@ -1099,6 +1099,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var scheduleLastError: String?
     var daemonCommandInFlight = false
     let automationSettings = AutomationSettingsController()
+    let vpnSettings = VPNSettingsController()
 
     var helperState: HelperState = .notInstalled
     var helperVersionMismatch = false
@@ -1334,6 +1335,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let settingsItem = NSMenuItem(title: "Открыть настройки сети…", action: #selector(openNetworkSettingsAction), keyEquivalent: "")
             settingsItem.target = self
             menu.addItem(settingsItem)
+            addVPNSettingsItem(to: menu)
             return
         }
 
@@ -1352,9 +1354,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         toggleItem.isEnabled = !vpnTunnelState.isBusy
         menu.addItem(toggleItem)
 
+        // Переключатель прямо в меню, а не только в окне настроек: когда сервер
+        // не отвечает, каждая попытка приносит системный диалог «Сервер L2TP-VPN
+        // не ответил», и выключать автоматику надо в один клик.
+        let autoItem = NSMenuItem(title: "Автопереподключение",
+                                  action: #selector(toggleAutoReconnect),
+                                  keyEquivalent: "")
+        autoItem.target = self
+        autoItem.state = vpnConfig.autoReconnectEnabled ? .on : .off
+        menu.addItem(autoItem)
+
         if !isForegroundSession {
             menu.addItem(disabledMenuItem("Фоновый сеанс — VPN ведёт активный пользователь"))
-        } else if vpnConfig.autoReconnectEnabled && vpnTunnelState != .connected && !vpnStoppedByUser {
+        } else if !vpnConfig.autoReconnectEnabled {
+            menu.addItem(disabledMenuItem("Переподключать вручную"))
+        } else if vpnTunnelState != .connected && !vpnStoppedByUser {
             let title: String
             if vpnReconnectGaveUp {
                 title = "Автоподключение остановлено после \(vpnMaxReconnectAttempts) попыток"
@@ -1363,10 +1377,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 title = "Автопереподключение включено"
             }
-            let stateItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-            stateItem.isEnabled = false
-            menu.addItem(stateItem)
+            menu.addItem(disabledMenuItem(title))
         }
+
+        addVPNSettingsItem(to: menu)
+    }
+
+    func addVPNSettingsItem(to menu: NSMenu) {
+        let item = NSMenuItem(title: "Настройки VPN…", action: #selector(openVPNSettings), keyEquivalent: "")
+        item.target = self
+        menu.addItem(item)
     }
 
     func disabledMenuItem(_ title: String) -> NSMenuItem {
@@ -1606,6 +1626,41 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.refreshStatus()
             }
         }
+    }
+
+    // Быстрое включение и выключение автопереподключения из меню. Пишем в то же
+    // хранилище, что и окно настроек, — состояние переживёт перезапуск.
+    @objc func toggleAutoReconnect() {
+        setAutoReconnect(!vpnConfig.autoReconnectEnabled)
+    }
+
+    func setAutoReconnect(_ enabled: Bool) {
+        vpnConfig.autoReconnect = enabled
+        VPNConfigStore.save(vpnConfig)
+        // Выключили — забываем накопленные попытки, чтобы после обратного
+        // включения серия начиналась заново, а не с исчерпанного счётчика.
+        vpnReconnectAttempts = 0
+        vpnReconnectGaveUp = false
+        lastAutoConnectAttempt = Date()
+        buildMenu()
+    }
+
+    @objc func openVPNSettings() {
+        vpnSettings.onSave = { [weak self] config in
+            guard let self = self else { return }
+            VPNConfigStore.save(config)
+            // Перечитываем, а не берём то, что вернуло окно: поверх ответа
+            // пользователя ложатся вшитые и централизованные умолчания.
+            self.vpnConfig = VPNConfigStore.load()
+            // Служба могла смениться — предыдущая серия попыток к новой
+            // отношения не имеет.
+            self.vpnReconnectAttempts = 0
+            self.vpnReconnectGaveUp = false
+            self.vpnStoppedByUser = false
+            self.lastAutoConnectAttempt = Date()
+            self.refreshStatus()
+        }
+        vpnSettings.show(config: vpnConfig, services: vpnServices)
     }
 
     @objc func openNetworkSettingsAction() {
